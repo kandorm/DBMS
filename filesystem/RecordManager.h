@@ -4,45 +4,48 @@
 
 #define PAGE_AREA_RANGE 4096
 #define PAGE_AREA_RANGE_HEAD 4097
-//每隔4096页设置一FreePage，FreePage中每2个byte代表某页空闲空间
-//故可以将这4097页划分为一个页区
+#define PAGE_BEFORE_RECORD 1
+
+//每隔4096页设置一ManagerPage，ManagerPage中每2个byte代表某页空闲空间
+//故可以将这4097页划分为一个页区,依次进行区域管理
 class RecordManager {
 private:
 	BufPageManager* bufPageManager;
 	//创建文件后对文件进行初始化（页头+第一个FreePage）
 	bool initFile(const char* name, int[] colSize, int colNum) {
-		//记录的长度
+		
+		//记录的长度(标志位+记录)
 		int recordSize = 0;
 		for (int i = 0; i < colNum; i++)
 			recordSize += colSize[i];
-		//每一页记录最大数目
-		int recordNumPerPage = PAGE_SIZE / recordSize;
+		recordSize += sizeof(int);
+
 		//禁止跨页存储
 		if (recordSize > PAGE_SIZE)return false;
+
 		//初始化页头（即该文件中记录的信息）
 		int fileID;
 		int fileHeadIndex;
 		bufPageManager->fileManager->openFile(name, fileID);
 		BufType b = bufPageManager->allocPage(fileID, 0, fileHeadIndex, false);	//SIZE=PAGE_INT_NUM=2048
 		b[0] = recordSize;												//文件中记录长度
-		b[1] = recordNumPerPage;									//文件每一页可以存储最多记录数
-		b[2] = 0;														//文件中记录总个数
-		b[3] = 1;														//文件中页区的个数
-		b[4] = colNum;													//表的列数
-		for (int i = 5; i < colNum + 5; i++)							//表每一列的size
+		b[1] = 0;														//文件中记录总个数
+		b[2] = 1;														//文件中页区的个数
+		b[3] = colNum;													//表的列数
+		for (int i = 4; i < colNum + 4; i++)							//表每一列的size
 			b[i] = colSize[i - 4];
 		bufPageManager->markDirty(index);
 		//对紧跟头文件后的FreePage进行初始化
-		if (initFreePage(fileID, 1, recordNumPerPage)) {
+		if (initFreePageManagerPage(fileID, 1, recordNumPerPage)) {
 			bufPageManager->writeBack(index);
 			bufPageManager->fileManager->closeFile(fileID);
 		}
 	}
-	bool initFreePage(int fileID, int pageID, int recordNumPerPage) {
+	bool initFreePageManagerPage(int fileID, int pageID, int recordNumPerPage) {
 		int index;
 		BufType b = bufPageManager->allocPage(fileID, pageID, index, false);
 		for (int i = 0; i < PAGE_INT_NUM; i++)
-			b[0] = recordNumPerPage<<16 + recordNumPerPage;
+			b[i] = recordNumPerPage<<16 + recordNumPerPage;
 		bufPageManager->markDirty(index);
 		return true;
 	}
@@ -50,7 +53,13 @@ private:
 		int index;
 		BufType b = bufPageManager->getPage(fileID, pageID, index);
 	}
-	int 
+	int _recordIDtoPageID(int recordID, int recordSize) {
+		int recordPerPage = PAGE_SIZE / recordSize;
+		int onlyRecordPageIndex = recordID / recordPerPage;
+		int managerPageNum = onlyRecordPageIndex / PAGE_AREA_RANGE + 1;
+
+		return PAGE_BEFORE_RECORD + onlyRecordPageIndex + managerPageNum;
+	}
 public:
 	//File Operation
 	bool createFile(const char* name, int[] colSize, int colNum) {
@@ -75,15 +84,15 @@ public:
 	}
 
 	//Record Operation
-	bool insertRecord(int fileID, unsigned char* record) {
+	bool insertRecord(int fileID, int recordSize, unsigned char* record) {
 		int headIndex;
 		BufType b = bufPageManager->getPage(fileID, 0, headIndex);
-		int recordSize = b[0];			//该文件中记录的长度（记录定长，最长UNSIGNED_MAX_INT）
-		int recordNumPerPage = b[1];	//文件每一页可以存储最多记录数
-		int pageAreaNum = b[3];			//文件中页区个数
+
+		int recordPerPage = PAGE_SIZE / recordSize;
+		int pageAreaNum = b[2];			//文件中页区个数
 		
 		for (int i = 0; i < pageAreaNum; i++) {
-			int pageID = 1 + pageAreaNum * PAGE_AREA_RANGE_HEAD;
+			int pageID = 1 + i * PAGE_AREA_RANGE_HEAD;
 			int freePageIndex;
 			BufType bFreePage = bufPageManager->getPage(fileID, pageID, freePageIndex);
 			for (int j = 0; j < PAGE_INT_NUM; j++) {
@@ -120,24 +129,47 @@ public:
 
 
 	}
-	bool deleteRecord(int fileID, int pageID, int recordID) {
-		int fileHeadIndex;
-		int recordSize;
-		BufType fileHeadBuf = bufPageManager->getPage(fileID, 0, fileHeadIndex);
-		recordSize = fileHeadBuf[0];
+	bool deleteRecord(int fileID, int recordID, int recordSize) {
 		
-		BufType buf = bufPageManager->getPage(fileID, pageID, index);
+		int recordPageID = _recordIDtoPageID(recordID, recordSize);
+		int recordPageIndex;
+		BufType recordPageBuf = bufPageManager->getPage(fileID, recordPageID, recordPageIndex);
+		
+		int recordPerPage = PAGE_SIZE / recordSize;
+		int recordIndex = recordID % recordPerPage;
+		int newRecordID = -1;
+		memcpy(recordPageBuf[recordIndex*recordSize], &newRecordID, sizeof(int));
+		bufPageManager->markDirty(recordPageIndex);
+		return true;
+
 
 	}
-	bool updateRecord() {
+	bool updateRecord(int fileID, int recordID, int recordSize, unsigned char* record) {
+		
+		int recordPageID = _recordIDtoPageID(recordID, recordSize);
+		int recordPageIndex;
+		BufType recordPageBuf = bufPageManager->getPage(fileID, recordPageID, recordPageIndex);
+
+		int recordPerPage = PAGE_SIZE / recordSize;
+		int recordIndex = recordID % recordPerPage;
+		memcpy(recordPageBuf[recordIndex*recordSize], record, recordSize);
+		bufPageManager->markDirty(recordPageIndex);
+		return true;
 
 	}
-	int** getRecord(int fileID, unsigned char* record, int[] condCol) {
+	char* queryRecord(int fileID, int recordID, int recordSize) {
 
+		int recordPageID = _recordIDtoPageID(recordID, recordSize);
+		int recordPageIndex;
+		BufType recordPageBuf = bufPageManager->getPage(fileID, recordPageID, recordPageIndex);
+
+		int recordPerPage = PAGE_SIZE / recordSize;
+		int recordIndex = recordID % recordPerPage;
+		char* record;
+		memcpy(record, recordPageBuf[recordIndex*recordSize], recordSize);
+		return record;
 	}
-	RecordManager() {
-		MyBitMap::initConst();
-		FileManager* fm = new FileManager();
-		bufPageManager = new BufPageManager(fm);
+	RecordManager(BufPageManager bpm) {
+		bufPageManager = bpm;
 	}
 }
