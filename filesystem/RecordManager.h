@@ -40,6 +40,7 @@ private:
 			bufPageManager->writeBack(index);
 			bufPageManager->fileManager->closeFile(fileID);
 		}
+		return true;
 	}
 	bool initFreePageManagerPage(int fileID, int pageID, int recordNumPerPage) {
 		int index;
@@ -49,9 +50,19 @@ private:
 		bufPageManager->markDirty(index);
 		return true;
 	}
-	bool _insertRecord(int fileID, int pageID, unsigned char* record) {
+	bool _insertRecord(int fileID, int pageID, int recordSize, unsigned char* record) {
 		int index;
 		BufType b = bufPageManager->getPage(fileID, pageID, index);
+		int recordPerPage = PAGE_SIZE / recordSize;
+		for (int i = 0; i < recordPerPage; i++) {
+			b = b + i * recordSize;
+			if (b[0] == -1) {
+				memcpy(b, record, recordSize);
+				break;
+			}
+		}
+		bufPageManager->markDirty(index);
+		return true;
 	}
 	int _recordIDtoPageID(int recordID, int recordSize) {
 		int recordPerPage = PAGE_SIZE / recordSize;
@@ -102,7 +113,7 @@ public:
 						recordPageID = pageID + 2 * (j+1) - 1;
 					else 
 						recordPageID = pageID + 2 * (j + 1);
-					if (_insertRecord(fileID, recordPageID, record)) {
+					if (_insertRecord(fileID, recordPageID, recordSize, record)) {
 						//文件头记录数加1
 						b[2] += 1;
 						bufPageManager->markDirty(headIndex);
@@ -121,11 +132,12 @@ public:
 		//现存页区已满
 		int newFreePageID = 1 + pageAreaNum * PAGE_AREA_RANGE_HEAD;
 		initFreePage(fileID, newFreePageID, recordNumPerPage);
-		if (_insertRecord(fileID, newFreePageID + 1, record)) {
+		if (_insertRecord(fileID, newFreePageID + 1, recordSize, record)) {
 			//文件头记录数加1
 			b[2] += 1;
 			bufPageManager->markDirty(headIndex);
 		}
+		return true;
 
 
 	}
