@@ -7,6 +7,18 @@ enum IndexType {
 	INT,
 	CHAR
 };
+
+enum Status {
+	NOTHING,
+	SPLIT,
+	MERGE
+};
+
+enum PageType {
+	NODE,
+	LEAF
+}
+
 typedef struct IndexFileHead {
 	IndexType indexType;
 	int indexSize;
@@ -15,14 +27,32 @@ typedef struct IndexFileHead {
 	int pageNum;
 	int firstFreePage;
 };
+
+struct PageHead {
+	PageType pageType;
+	int n;
+}
+
 class IndexManager {
 private:
 	BufPageManager* bufPageManager;
+	
+	int allocIndexPage(int fileID) {
+		int fep = IndexFileHead->firstFreePage;
+		int fhindex;
+		BufType c = bufPageManager->getPage(fileID,0,fhindex);
+		IndexFileHead->firstFreePage++;
+		IndexFileHead->pageNum++;
+		bufPageManager->markDirty(fhindex);
+		return fep;
+	}
 
 public:
+
 	IndexManager(BufPageManager* bpm) {
 		bufPageManager = bpm;
 	}
+	
 	bool createIndex(const char* name, IndexType idxType, int idxSize) {
 
 		//½ûÖ¹¿çÒ³´æ´¢
@@ -65,6 +95,15 @@ public:
 		bufPageManager->fileManager->closeFile(fileID);
 		return 0;
 	}
-
-
+	
+	int insertNode(int fileID,void* data,int recordID) {
+		if(IndexFileHead->root == -1) {
+			IndexFileHead->root = allocIndexPage();
+			int index;
+			BufType b = bufPageManager->getPage(fileID,IndexFileHead->root,index);
+			bufPageManager->markDirty(index);
+			PageHead* pageHead = (pageHead*) b;
+			
+		}
+	}
 };
