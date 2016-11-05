@@ -1,23 +1,16 @@
+#ifndef INDEX_MANAGER
+#define INDEX_MANAGER
+
 #include "filesystem/bufmanager/BufPageManager.h"
 #include "filesystem/fileio/FileManager.h"
 #include "filesystem/utils/pagedef.h"
+#include "IndexController.h"
 #include <string.h>
 
 enum IndexType {
 	INT,
 	CHAR
 };
-
-enum Status {
-	NOTHING,
-	SPLIT,
-	MERGE
-};
-
-enum PageType {
-	NODE,
-	LEAF
-}
 
 typedef struct IndexFileHead {
 	IndexType indexType;
@@ -28,35 +21,21 @@ typedef struct IndexFileHead {
 	int firstFreePage;
 };
 
-struct PageHead {
-	PageType pageType;
-	int n;
-}
 
 class IndexManager {
 private:
 	BufPageManager* bufPageManager;
-	
-	int allocIndexPage(int fileID) {
-		int fep = IndexFileHead->firstFreePage;
-		int fhindex;
-		BufType c = bufPageManager->getPage(fileID,0,fhindex);
-		IndexFileHead->firstFreePage++;
-		IndexFileHead->pageNum++;
-		bufPageManager->markDirty(fhindex);
-		return fep;
-	}
 
 public:
 
 	IndexManager(BufPageManager* bpm) {
 		bufPageManager = bpm;
 	}
-	
+
 	bool createIndex(const char* name, IndexType idxType, int idxSize) {
 
 		//½ûÖ¹¿çÒ³´æ´¢
-		if (idxSize+sizeof(int)+sizeof(int) > PAGE_SIZE)return false;
+		if (idxSize + sizeof(int) + sizeof(int) > PAGE_SIZE)return false;
 
 		if (bufPageManager->fileManager->createFile(name)) {
 			int fileID;
@@ -75,6 +54,8 @@ public:
 				memcpy(b, &filehead, sizeof(IndexFileHead));
 				bufPageManager->markDirty(fileHeadIndex);
 
+				bufPageManager->close();
+				bufPageManager->fileManager->closeFile(fileID);
 			}
 		}
 		return false;
@@ -86,8 +67,12 @@ public:
 		return false;
 	}
 
-	bool openIndex(const char* name, int& fileID) {
-		return bufPageManager->fileManager->openFile(name, fileID);
+	bool openIndex(const char* name, IndexController& idxController) {
+		int fileID;
+		bufPageManager->fileManager->openFile(name, fileID);
+		IndexController indexController(bufPageManager, fileID);
+		idxController = indexController;
+		return true;
 	}
 
 	int closeIndex(int fileID) {
@@ -95,15 +80,8 @@ public:
 		bufPageManager->fileManager->closeFile(fileID);
 		return 0;
 	}
-	
-	int insertNode(int fileID,void* data,int recordID) {
-		if(IndexFileHead->root == -1) {
-			IndexFileHead->root = allocIndexPage();
-			int index;
-			BufType b = bufPageManager->getPage(fileID,IndexFileHead->root,index);
-			bufPageManager->markDirty(index);
-			PageHead* pageHead = (pageHead*) b;
-			
-		}
-	}
+
+
+
 };
+#endif // !INDEX_MANAGER
