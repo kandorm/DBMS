@@ -5,22 +5,8 @@
 #include "filesystem/fileio/FileManager.h"
 #include "filesystem/utils/pagedef.h"
 #include "IndexController.h"
+#include "IndexCommon.h"
 #include <string.h>
-
-enum IndexType {
-	INT,
-	CHAR
-};
-
-typedef struct IndexFileHead {
-	IndexType indexType;
-	int indexSize;
-	int firstLeafNode;
-	int root;
-	int pageNum;
-	int firstFreePage;
-};
-
 
 class IndexManager {
 private:
