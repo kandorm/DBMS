@@ -128,7 +128,9 @@ public:
 		return bufPageManager->fileManager->openFile(name, fileID);
 	}
 	int closeFile(int fileID) {
-		return bufPageManager->fileManager->closeFile(fileID);
+		bufPageManager->close();
+		bufPageManager->fileManager->closeFile(fileID);
+		return 0;
 	}
 
 	//Record Operation

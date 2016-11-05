@@ -45,10 +45,24 @@ public:
 				memcpy(b, &filehead, sizeof(IndexFileHead));
 				bufPageManager->markDirty(fileHeadIndex);
 
-				bufPageManager->close();
-				bufPageManager->fileManager->closeFile(fileID);
 			}
 		}
 		return false;
+	}
+
+	bool deleteIndex(const char* name) {
+		if (remove(name) == 0)
+			return true;
+		return false;
+	}
+
+	bool openIndex(const char* name, int& fileID) {
+		return bufPageManager->fileManager->openFile(name, fileID);
+	}
+
+	int closeIndex(int fileID) {
+		bufPageManager->close();
+		bufPageManager->fileManager->closeFile(fileID);
+		return 0;
 	}
 };
