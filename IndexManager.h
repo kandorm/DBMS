@@ -38,13 +38,19 @@ private:
 	BufPageManager* bufPageManager;
 	
 	int allocIndexPage(int fileID) {
+		BufType c = bufPageManager->getPage(fileID,0,fhindex);
 		int fep = IndexFileHead->firstFreePage;
 		int fhindex;
-		BufType c = bufPageManager->getPage(fileID,0,fhindex);
+		
 		IndexFileHead->firstFreePage++;
 		IndexFileHead->pageNum++;
 		bufPageManager->markDirty(fhindex);
 		return fep;
+	}
+	
+	int fillData(BufType b,char* key,int recordID,int i) {
+		memcpy(b+sizeof(IndexFileHead)+i*(indexSize+sizeof(int)),&recordID,sizeof(int));
+		memcpy(b+sizeof(IndexFileHead)+i*(indexSize+sizeof(int))+sizeof(int),key,indexSize);
 	}
 
 public:
@@ -96,14 +102,24 @@ public:
 		return 0;
 	}
 	
-	int insertNode(int fileID,void* data,int recordID) {
+	int insertNode(int fileID,char* key,int recordID) {
+		//markDirty
 		if(IndexFileHead->root == -1) {
-			IndexFileHead->root = allocIndexPage();
+			IndexFileHead->root = allocIndexPage(fileID);
 			int index;
 			BufType b = bufPageManager->getPage(fileID,IndexFileHead->root,index);
 			bufPageManager->markDirty(index);
-			PageHead* pageHead = (pageHead*) b;
-			
+			PageHead* pageHead = (PageHead*) b;
+			pageHead->n = 1;
+			pageHead->pageType = LEAF;
+			fillData(b,key,recordID,0);
+		}
+		else {
+			if(insertBPlus(IndexFileHead->root) == SPLIT) {
+				int newPage = allocIndexPage();
+				splitPage(IndexFileHead->root,newPage);
+				int newRoot = allocIndexPage();
+			}
 		}
 	}
 };
