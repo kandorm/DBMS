@@ -219,7 +219,7 @@ public:
 		
 		pageHead2->n = pageHead1->n / 2;
 		pageHead2->pageType = pageHead1->pageType;
-		pageHead1->n = (pageHead1->n - pageHead2->n +1);
+		pageHead1->n -= pageHead2->n +1;
 		memcpy(b2+sizeof(PageHead),getValue(b1,pageHead1->n),pageHead2->n * (sizeof(int)+indexSize)+sizeof(int));
 		//*getValue(b1,pageHead1->n)= pageID2;
 		return true;
