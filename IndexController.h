@@ -41,9 +41,9 @@ private:
 		//bufPageManager->markDirty(index);
 		(PageHead*) pageHead = (PageHead*)b;
 		if(b->pageType == LEAF)
-			return getK(b,pageHead->n-1);
+			return getKey(b,pageHead->n-1);
 		else
-			return getK(b,pageHead->n);
+			return getKey(b,pageHead->n);
 	}
 
 
@@ -103,15 +103,8 @@ private:
 		}
 		return false;
 	}
-	int getP(BufType b,int i) {
-		return b+sizeof(IndexFileHead)+i*(indexSize+sizeof(int));
-	} 
-	
-	char* getK(BufType b,int i) {
-		return b+sizeof(IndexFileHead)+i*(indexSize+sizeof(int))+sizeof(int);
-	}
 
-	int getValue(char* b, int i) {
+	BufType getValue(char* b, int i) {
 		return (int*)(b + sizeof(PageHead) + i*(sizeof(int) + indexSize))[0];
 	}
 
@@ -136,7 +129,6 @@ public:
 		//markDirty
 		if(IndexFileHead->root == -1) {
 			IndexFileHead->root = allocIndexPage(fileID);
-		
 			int index;
 			BufType b = bufPageManager->getPage(fileID,IndexFileHead->root,index);
 			bufPageManager->markDirty(index);
@@ -156,7 +148,7 @@ public:
 				(PageHead*) pageHead = (PageHead*)b;
 				pageHead->n = 1;
 				pageHead->pageType = NODE;
-				BufType p = getP(b,1);
+				BufType p = getValue(b,1);
 				(*p) = newPage;
 				fillData(b,getMaxK(fileID,indexFileHead->root),indexFileHead->root,0);
 				indexFileHead->root = newRoot;
@@ -164,10 +156,17 @@ public:
 		}
 	}
 	
-	int insertBPlus(int fileID,int pageID,char* key,int recordID) {
+	int insertBPlus(int pageID,char* key,int recordID) {
 		int index;
 		BufType b = bufPageManager->getPage(fileID,pageID,index);
-		
+		PageHead* pageHead = (PageHead*)b;
+		if(pageHead->pageType == LEAF) {
+			int pos = pageHead->n;
+			for(int i = 0;i < pageHead->n;i++) {
+				char* k = getKey(b,i);
+				if(lessThanKey()k)
+			}
+		}
 	}
 
 	bool deleteNode() {
