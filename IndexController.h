@@ -219,9 +219,68 @@ public:
 			int pos = pageHead->n;
 			for(int i = 0;i < pageHead->n;i++) {
 				char* k = getKey(b,i);
-				if(lessThanKey()){}
+				if(!lessThanKey(key,k)) {
+					pos = i;
+					break;
+				}
 			}
+			insertIntoPage(b,pos,key,recordID);
+			bufPageManager->markDirty(index);
+			if(pageHead->n > indexPerPage)
+				return SPLIT;
+			return NOTHING;
 		}
+		else {
+			int pos = pageHead->n;
+			for(int i = 0;i < pageHead->n;i++) {
+				char* k = getKey(b,i);
+				if(!lessThanKey(key,k)) {
+					pos = i;
+					break;
+				}
+			}
+			int nextPage = getValue(b,pos);
+			int status = insertBPlus(nextPage,key,recordID);
+			if(status == SPLIT) {
+				int newPage = allocIndexPage();
+				splitPage(nextPage,newPage);
+				insertIntoPage(b,pos,getMaxK(nextPage),recordID);
+				*getValue(b,pos+1) = newPage;
+				bufPageManager->markDirty(index);
+				if(pageHead->n > indexPerPage)
+					return SPLIT;
+			}
+			return NOTHING;
+		}
+		return NOTHING;
+	}
+	
+	bool insertIntoPage(BufType b,int pos,char* key,int recordID) {
+		PageHead* pageHead = (PageHead*)b;
+		*getValue(b,pageHead->n+1) = *getValue(b,pageHead->n);//n or n+1?
+		for(int i = (pageHead->n)-1;i >= pos;i--) {
+			fillData(b,getKey(b,i-1),*getValue(b,i-1),i);//????!!!!
+		}
+		pageHead->n++;
+		fillData(b,key,recordID,pos);
+		return true;
+	}
+	
+	bool splitPage(int pageID1,int pageID2) {
+		int index;
+		BufType b1 = bufPageManager->getPage(fileID,pageID1,index);
+		bufPageManager->markDirty(index);
+		BufType b2 = bufPageManager->getPage(fileID,pageID2,index);
+		bufPageManager->markDirty(index);
+		PageHead* pageHead1 = (PageHead*)b1;
+		PageHead* pageHead2 = (PageHead*)b2;
+		
+		pageHead2->n = pageHead1->n / 2;
+		pageHead2->pageType = pageHead1->pageType;
+		pageHead1->n -= pageHead2->n +1;
+		memcpy(b2+sizeof(PageHead),getValue(b1,pageHead1->n),pageHead2->n * (sizeof(int)+indexSize)+sizeof(int));
+		//*getValue(b1,pageHead1->n)= pageID2;
+		return true;
 	}
 
 	bool adjustKey(int pageID, char* sm_key, int subIdx)
