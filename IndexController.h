@@ -19,6 +19,7 @@ private:
 	int indexSize;
 	int indexPerPage;
 
+	int root;
 	int pageNum;
 
 	int allocIndexPage() {
@@ -39,25 +40,28 @@ private:
 		BufType b = bufPageManager->getPage(fileID,pageID,index);
 		//bufPageManager->markDirty(index);
 		(PageHead*) pageHead = (PageHead*)b;
-		if(b->pageType == LEAF)
-			return getKey(b,pageHead->n-1);
-		else
-			return getKey(b,pageHead->n);
+		return getKey(b,pageHead->n-1);
 	}
 
 
 	bool lessThanKey(void* key1, void* key2) {
 		switch (indexType) {
 		case INT:
-			int a_int = *(int*)key1;
-			int b_int = *(int*)key2;
+			int a_int = *((int*)key1);
+			int b_int = *((int*)key2);
 			return a_int < b_int;
 			break;
 		case CHAR:
-			char* a_char = (char*)key1;
-			char* b_char = (char*)key2;
-			//std::cout << "less : a_char : " << a_char << "b_char : " << b_char << endl;
-			return strcmp(a_char, b_char) < 0;
+			char* a_buf = new char[indexSize + 5];
+			memcpy(a_buf, key1, indexSize);
+			a_buf[indexSize] = 0;
+
+			char* b_buf = new char[indexSize + 5];
+			memcpy(b_buf, key2, indexSize);
+			b_buf[indexSize] = 0;
+
+			//std::cout << "less : a_buf : " << a_buf << "b_buf : " << b_buf << endl;
+			return strcmp(a_buf, b_buf) < 0;
 			break;
 		default:
 			break;
@@ -68,15 +72,21 @@ private:
 	bool greaterThanKey(void* key1, void* key2) {
 		switch (indexType) {
 		case INT:
-			int a_int = *(int*)key1;
-			int b_int = *(int*)key2;
+			int a_int = *((int*)key1);
+			int b_int = *((int*)key2);
 			return a_int > b_int;
 			break;
 		case CHAR:
-			char* a_char = (char*)key1;
-			char* b_char = (char*)key2;
-			//std::cout << "greater : a_char : " << a_char << "b_char : " << b_char << endl;
-			return strcmp(a_char, b_char) > 0;
+			char* a_buf = new char[indexSize + 5];
+			memcpy(a_buf, key1, indexSize);
+			a_buf[indexSize] = 0;
+
+			char* b_buf = new char[indexSize + 5];
+			memcpy(b_buf, key2, indexSize);
+			b_buf[indexSize] = 0;
+
+			//std::cout << "greater : a_buf : " << a_buf << "b_buf : " << b_buf << endl;
+			return strcmp(a_buf, b_buf) > 0;
 			break;
 		default:
 			break;
@@ -87,15 +97,21 @@ private:
 	bool equal2Key(void* key1, void* key2) {
 		switch (indexType) {
 		case INT:
-			int a_int = *(int*)key1;
-			int b_int = *(int*)key2;
+			int a_int = *((int*)key1);
+			int b_int = *((int*)key2);
 			return a_int == b_int;
 			break;
 		case CHAR:
-			char* a_char = (char*)key1;
-			char* b_char = (char*)key2;
-			//std::cout << "greater : a_char : " << a_char << "b_char : " << b_char << endl;
-			return strcmp(a_char, b_char) == 0;
+			char* a_buf = new char[indexSize + 5];
+			memcpy(a_buf, key1, indexSize);
+			a_buf[indexSize] = 0;
+
+			char* b_buf = new char[indexSize + 5];
+			memcpy(b_buf, key2, indexSize);
+			b_buf[indexSize] = 0;
+
+			//std::cout << "equal : a_buf : " << a_buf << "b_buf : " << b_buf << endl;
+			return strcmp(a_buf, b_buf) == 0;
 			break;
 		default:
 			break;
@@ -112,6 +128,44 @@ private:
 		return (char*)(b + sizeof(PageHead) + i*(sizeof(int) + indexSize) + sizeof(int));
 	}
 
+	int _searchNode(int pageID, void* targetKey, int& subIdx) {
+
+		if (pageID < 1 || pageID > pageNum - 1)return -1;
+
+		int index;
+		BufType b = bufPageManager->getPage(fileID, pageID, index);
+		bufPageManager->access(index);
+		PageHead* pageHead = (PageHead*)b;
+		PageType pageType = pageHead->pageType;
+		int keyNum = pageHead->n;
+		switch (pageType)
+		{
+		case NODE:
+			if (!lessThanKey(targetKey, getKey(b, keyNum - 1))) {
+				int afterKeyPage = getValue(b, keyNum)[0];
+				subIdx = keyNum;
+				return _searchNode(afterKeyPage, targetKey, subIdx);
+			}
+			else {
+				for (int i = 0; i < keyNum; i++) {
+					char* tkey = getKey(b, i);
+					if (lessThanKey(targetKey, tkey)) {
+						int beforeKeyPage = getValue(b, i)[0];
+						subIdx = i;
+						return _searchNode(beforeKeyPage, targetKey, subIdx);
+					}
+				}
+			}
+			break;
+		case LEAF:
+			return pageID;
+			break;
+		default:
+			break;
+		}
+		return -1;
+	}
+
 public:
 	IndexController(BufPageManager* bpm, int fID) {
 		bufPageManager = bpm;
@@ -120,10 +174,11 @@ public:
 		bufPageManager->access(fileHeadIndex);
 		indexType = indexFileHead->indexType;
 		indexSize = indexFileHead->indexSize;
-		indexPerPage = (PAGE_SIZE - sizeof(PageHead)-sizeof(int)) / (sizeof(int) + indexSize);
+		indexPerPage = (PAGE_SIZE - sizeof(PageHead) - sizeof(int)) / (sizeof(int) + indexSize);
 
+		root = indexFileHead->root;
 		pageNum = indexFileHead->pageNum;
-
+	}
 	
 	int insertNode(int fileID,char* key,int recordID) {
 		//markDirty
@@ -164,54 +219,95 @@ public:
 			int pos = pageHead->n;
 			for(int i = 0;i < pageHead->n;i++) {
 				char* k = getKey(b,i);
-				if(lessThanKey()k)
+				if(lessThanKey()){}
 			}
 		}
 	}
 
-	bool deleteNode() {
-
-	}
-
-	bool searchNode(int pageID, void* targetKey, int& recordID) {
-		
-		if (pageID < 1 || pageID > pageNum - 1)return false;
-
+	bool adjustKey(int pageID, char* sm_key, int subIdx)
+	{
+		if (subIdx < 0 || subIdx > indexPerPage)return false;
 		int index;
 		BufType b = bufPageManager->getPage(fileID, pageID, index);
 		bufPageManager->access(index);
 		PageHead* pageHead = (PageHead*)b;
-		PageType pageType = pageHead->pageType;
-		int keyNum = pageHead->n;
-		switch (pageType)
+
+		if (subIdx == 0) {
+		}
+		else if (subIdx == 1)
 		{
-		case NODE:
-			if (greaterThanKey(targetKey, getKey(b, keyNum - 1))) {
-				int afterKeyPage = getValue(b, nodeNum)[0];
-				return searchNode(afterKeyPage, targetKey, recordID);
-			}
-			else {
-				for (int i = 0; i < keyNum; i++) {
-					char* tkey = getKey(b, i);
-					if (lessThanKey(targetKey, tkey)) {
-						int beforeKeyPage = getValue(b, i)[0];
-						return searchNode(beforeKeyPage, targetKey, recordID);
-					}
+			char* tkey = getKey(b, subIdx - 1);
+			memcpy(tkey, sm_key, indexSize);
+			int fatherPageID = pageHead->fatherPage;
+			if (fatherPageID > 0) {
+				int fatherPageIndex;
+				BufType fatherPageBuf = bufPageManager->getPage(fileID, fatherPageID, fatherPageIndex);
+				PageHead* pageHead = (PageHead*)fatherPageBuf;
+				int keyNum = pageHead->n;
+				int i = 0;
+				for (; i <= keyNum; i++) {
+					if (getValue(fatherPageBuf, i)[0] == pageID)
+						break;
 				}
+				adjustKey(fatherPageID, sm_key, i);
 			}
-			break;
-		case LEAF:
+		}
+		else {
+			char* tkey = getKey(b, subIdx - 1);
+			memcpy(tkey, sm_key, indexSize);
+		}
+	}
+	bool deleteNode(void* targetKey, int& recordID) {
+		
+		bool deleteSuccessFlag = false;
+
+		int subIndex = -1;
+		int targetPageID = _searchNode(root, targetKey, subIndex);
+		int index;
+		BufType b = bufPageManager->getPage(fileID, targetPageID, index);
+		PageHead* pageHead = (PageHead*)b;
+		int keyNum = pageHead->n;
+		int fatherPageID = pageHead->fatherPage;
+		if (keyNum > indexPerPage /2) {
+			char* oldSmKey = getKey(b, 0);
 			for (int i = 0; i < keyNum; i++) {
 				char* tkey = getKey(b, i);
 				if (equal2Key(targetKey, tkey)) {
-					recordID = getValue(b, i)[0];
-					return true;
+					BufType targetValueAddr = getValue(b, i);
+					recordID = targetValueAddr[0];
+					memcpy((char*)targetValueAddr, (char*)getValue(b, i + 1), (keyNum - 1 - i) * (sizeof(int) + indexSize));
+					pageHead->n--;
+					bufPageManager->markDirty(index);
+					deleteSuccessFlag = true;
 				}
 			}
-			break;
-		default:
-			break;
+			if (!equal2Key(oldSmKey, getKey(b, 0))) {
+				adjustKey(fatherPageID, getKey(b, 0), subIndex);
+			}
 		}
+		else {
+
+		}
+		return deleteSuccessFlag;
+	}
+
+	bool searchNode(void* targetKey, int& recordID) {
+		int subIndex = -1;
+		int targetPageID = _searchNode(root, targetKey, subIndex);
+		if (targetPageID < 0)return false;
+		int index;
+		BufType b = bufPageManager->getPage(fileID, targetPageID, index);
+		bufPageManager->access(index);
+		PageHead* pageHead = (PageHead*)b;
+		int keyNum = pageHead->n;
+		for (int i = 0; i < keyNum; i++) {
+			char* tkey = getKey(b, i);
+			if (equal2Key(targetKey, tkey)) {
+				recordID = getValue(b, i);
+				return true;
+			}
+		}
+		
 		return false;
 	}
 	

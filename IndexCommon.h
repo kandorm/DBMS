@@ -9,7 +9,7 @@ enum IndexType {
 enum PageType {
 	NODE,
 	LEAF
-}
+};
 
 enum Status {
 	NOTHING,
@@ -29,6 +29,7 @@ typedef struct IndexFileHead {
 typedef struct PageHead {
 	PageType pageType;
 	int n;
-}
+	int fatherPage;
+};
 
 #endif // !INDEX_COMMON
