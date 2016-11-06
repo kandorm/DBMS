@@ -1,7 +1,7 @@
 #ifndef INDEX_CONTROLLER
 #define INDEX_CONTROLLER
 
-#include "filesystem/bufmanager/BufPageManager.h"
+#include "filesystem\bufmanager\BufPageManager.h"
 #include "filesystem/fileio/FileManager.h"
 #include "filesystem/utils/pagedef.h"
 #include "IndexCommon.h"
@@ -22,9 +22,10 @@ private:
 	int pageNum;
 
 	int allocIndexPage() {
+		int fep = indexFileHead->firstFreePage;
 		indexFileHead->firstFreePage++;
 		indexFileHead->pageNum++;
-		bufPageManager->markDirty(fhindex);
+		bufPageManager->markDirty(fileHeadIndex);
 		return fep;
 	}
 
@@ -33,17 +34,15 @@ private:
 		memcpy(b+sizeof(IndexFileHead)+i*(indexSize+sizeof(int))+sizeof(int),key,indexSize);
 	}
 	
-	
-	
-	char* getMaxK(int fileID,int pageID) {
+	char* getMaxK(int pageID) {
 		int index;
 		BufType b = bufPageManager->getPage(fileID,pageID,index);
 		//bufPageManager->markDirty(index);
 		(PageHead*) pageHead = (PageHead*)b;
 		if(b->pageType == LEAF)
-			return getK(b,pageHead->n-1);
+			return getKey(b,pageHead->n-1);
 		else
-			return getK(b,pageHead->n);
+			return getKey(b,pageHead->n);
 	}
 
 
@@ -103,16 +102,9 @@ private:
 		}
 		return false;
 	}
-	int getP(BufType b,int i) {
-		return b+sizeof(IndexFileHead)+i*(indexSize+sizeof(int));
-	} 
-	
-	char* getK(BufType b,int i) {
-		return b+sizeof(IndexFileHead)+i*(indexSize+sizeof(int))+sizeof(int);
-	}
 
-	int getValue(char* b, int i) {
-		return (int*)(b + sizeof(PageHead) + i*(sizeof(int) + indexSize))[0];
+	BufType getValue(BufType b, int i) {
+		return b + sizeof(PageHead) + i*(sizeof(int) + indexSize);
 	}
 
 	char* getKey(char* b, int i) {
@@ -156,7 +148,7 @@ public:
 				(PageHead*) pageHead = (PageHead*)b;
 				pageHead->n = 1;
 				pageHead->pageType = NODE;
-				BufType p = getP(b,1);
+				BufType p = getValue(b,1);
 				(*p) = newPage;
 				fillData(b,getMaxK(fileID,indexFileHead->root),indexFileHead->root,0);
 				indexFileHead->root = newRoot;
@@ -179,7 +171,7 @@ public:
 		if (pageID < 1 || pageID > pageNum - 1)return false;
 
 		int index;
-		char* b = bufPageManager->getPage(fileID, pageID, index);
+		BufType b = bufPageManager->getPage(fileID, pageID, index);
 		bufPageManager->access(index);
 		PageHead* pageHead = (PageHead*)b;
 		PageType pageType = pageHead->pageType;
@@ -188,14 +180,14 @@ public:
 		{
 		case NODE:
 			if (greaterThanKey(targetKey, getKey(b, keyNum - 1))) {
-				int afterKeyPage = getValue(b, nodeNum);
+				int afterKeyPage = getValue(b, nodeNum)[0];
 				return searchNode(afterKeyPage, targetKey, recordID);
 			}
 			else {
 				for (int i = 0; i < keyNum; i++) {
 					char* tkey = getKey(b, i);
 					if (lessThanKey(targetKey, tkey)) {
-						int beforeKeyPage = getValue(b, i);
+						int beforeKeyPage = getValue(b, i)[0];
 						return searchNode(beforeKeyPage, targetKey, recordID);
 					}
 				}
@@ -205,7 +197,7 @@ public:
 			for (int i = 0; i < keyNum; i++) {
 				char* tkey = getKey(b, i);
 				if (equal2Key(targetKey, tkey)) {
-					recordID = getValue(b, i);
+					recordID = getValue(b, i)[0];
 					return true;
 				}
 			}
